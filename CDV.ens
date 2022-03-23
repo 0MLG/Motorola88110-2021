@@ -1,0 +1,593 @@
+;  Macros
+
+LEA:      MACRO  (reg, ETIQ)
+          or     reg, r0,  low(ETIQ)
+          or.u   reg, reg, high(ETIQ)
+          ENDMACRO
+
+DBNZ:     MACRO  (reg, ETIQ)
+          sub    reg, reg, 1
+          cmp    r2, reg, r0
+          bb0    eq, r2, ETIQ
+          ENDMACRO
+
+PUSH:     MACRO  (reg)
+          subu   r30, r30, 4
+          st     reg, r30, r0
+          ENDMACRO
+
+POP:      MACRO  (reg)
+          ld     reg, r30, r0
+          addu   r30, r30, 4
+          ENDMACRO
+
+;	Pruebas
+
+org 0x8000
+
+C: data "_"
+REF: data "AAAABBBBCCCCDDDDEEEE_Fin\0"
+from: data 4
+to: data 24
+Cadena1: data "12*3456789012*3456789012*3456789012*3456789012*3456789012*34567890\0"
+Cadena2: data "12*3456789012*3456789012*3456789012*3456789012*3456789012*34567890\0"
+;CadenaBM1: data "0123456789\0"
+CadenaBM2: data "tres tristes tigres comen trigo en un trigal, el primer tigre que...\0"
+;CadenaBM3: data "caaaabcdaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+;CadCS: data 0x01010101, 0x02020202, 0x03030303
+;CadCS2: data 0xF1F1F1F1,0xF2F2F2F2,0xF3F3F3F3,0xF4F4F4F4,0x01010101, 0x02020202, 0x03030303,0x04040404,0xFFFFFFFF,0x03030303,0xDDDDDDDD,0xCCCCCCCC,0xFF00CCDD
+;CadCS3: data 0x01010101, 0x01010101, 0x01010101, 0x01010101,  0x01010101, 0x00010101
+DC1: data 0x07010014, 0x30000000, 0x34333231, 0x38373635, 0x37383939, 0x33343536, 0x00303132
+DC2: data 0x0b010044, 0x10102400, 0x74004000, 0x20736572, 0x73697274, 0x04000274, 0x00016769, 0x6d6f6304, 0x00046e65, 0x206f6704, 0x75206e65, 0x61060018, 0x65202c6c, 0x7270206c, 0x72656d69, 0x2006000c,  0x2e657571, 0x00002e2e
+
+org 0x8400
+	
+PPALVER:LEA(r30,0x14FF8)
+		LEA(r10,CadenaBM2)
+		LEA(r11,0x12000)
+		LEA(r12,0x12004)
+		PUSH(r12)
+		PUSH(r11)
+		PUSH(r10)
+		bsr Verifica
+		addu r30,r30,8
+		stop
+
+;---------------------------------------------------------
+; LongCad
+;---------------------------------------------------------
+
+LongCad:	ld r20,r30,0	; puntero a cadena
+			subu r29,r0,r0	; r29=0
+
+bucLong:	ld.b r21,r20,0	; elem cadena
+			cmp r7,r21,0x00
+			bb1 eq,r7,finLong
+			addu r29,r29,1	; si elem!=\0 -> r29++ y sig.elem
+			addu r20,r20,1
+			br bucLong
+
+finLong:	jmp(r1)
+
+;---------------------------------------------------------
+; BuscaCar
+;---------------------------------------------------------
+
+BuscaCar:	ld.b r20,r30,0		; caracter
+			ld r21,r30,4		; puntero a cadena
+			ld r22,r30,8		; from (cont)
+			ld r23,r30,12		; to
+			or r29,r22,r0		; r29=from
+			cmp r7,r22,r23
+			bb1 eq,r7,finBusc
+			addu r21,r21,r22	; cadena en posicion from
+
+bucBusc:	ld.b r24,r21,0		; elem cadena
+			cmp r7,r24,r20
+			bb1 eq,r7,finBusc	; si elem=caract -> fin
+			addu r22,r22,1		; cont++
+			addu r29,r29,1		; r29 ++
+			cmp r7,r22,r23
+			bb1 eq,r7,finBusc	; si cont=to -> fin
+			addu r21,r21,1		; sig.elem
+			br bucBusc
+
+finBusc:	jmp(r1)
+
+;---------------------------------------------------------
+; CoincidenCad
+;---------------------------------------------------------
+
+CoincidenCad:	ld r20,r30,0		; puntero cad1
+				ld r21,r30,4		; puntero cad2
+				subu r29,r0,r0		; r29=0
+
+bucCoin:		ld.bu r22,r20,0		; elem cad1
+				ld.bu r23,r21,0		; elem cad2
+				cmp r7,r22,0x00
+				bb1 eq,r7,finCoin
+				cmp r7,r23,0x00
+				bb1 eq,r7,finCoin
+				cmp r7,r22,r23
+				bb0 eq,r7,finCoin	; si elem_cad1!=elem_cad2 -> fin del bucle
+				addu r20,r20,1
+				addu r21,r21,1		; sig.elem
+				addu r29,r29,1		; coincidencias++
+				br bucCoin
+
+finCoin:		jmp(r1)
+
+;---------------------------------------------------------
+; BuscaMax
+;---------------------------------------------------------
+
+BuscaMax:		PUSH(r31)
+				PUSH(r1)
+				or r31,r30,r30
+				subu r30,r30,16
+				ld r20,r31,8 		; ptr a ref
+				ld r10,r31,12		; max
+				ld r11,r31,16		; jj
+				or r29,r0,0
+				or r2,r0,r0			; posicion p
+				or r3,r0,0			; longitud l
+
+bucBM:			cmp r7,r2,r10
+				bb1 eq,r7,finBM
+				ld.bu r5,r20,r10	; caracter pos 'max'
+				st r2,r31,-4
+				st r3,r31,-8
+				PUSH(r10)
+				PUSH(r2)
+				PUSH(r20)
+				PUSH(r5)
+				bsr BuscaCar		; BuscaCar(C,ref,p,max)
+				addu r30,r30,16
+				ld r20,r31,8		; ptr a ref
+				ld r2,r31,-4		; posicion p
+				ld r3,r31,-8
+				ld r10,r31,12
+				cmp r7,r29,r10		; si r29=max -> no ha encontrado nada
+				bb1 eq,r7,finBM
+				or r2,r29,r0
+				st r2,r31,-4
+				st r3,r31,-8
+				addu r5,r20,r2		; ptr a texto
+				addu r6,r20,r10		; ptr a max
+				st r5,r31,-12
+				st r6,r31,-16
+				PUSH(r5)
+				PUSH(r6)
+				bsr CoincidenCad
+				addu r30,r30,8
+				ld r2,r31,-4
+				ld r3,r31,-8		; longitud l
+				ld r5,r31,-12
+				ld r6,r31,-16
+				cmp r7,r29,255
+				bb0 ge,r7,comp2BM
+				or r29,r0,255
+comp2BM:		cmp r7,r29,r3
+				bb1 le,r7,sigBM		; si r29<r3 -> no actualizo resultado
+				ld r11,r31,16		; jj
+				st r2,r11,0			; jj=p
+				or r3,r29,r0
+				br sigBM
+sigBM:			addu r2,r2,1
+				ld r20,r31,8
+				ld r10,r31,12
+				br bucBM
+
+finBM:			or r29,r3,r0
+				cmp r7,r29,0
+				bb0 eq,r7,finBM2
+				ld r11,r31,16		; jj
+				subu r12,r0,1
+				st r12,r11,0
+				
+finBM2:			or r30,r31,r31
+				POP(r1)
+				POP(r31)
+				jmp(r1)
+				
+;---------------------------------------------------------
+; Checksum
+;---------------------------------------------------------
+
+Checksum: 		ld r20,r30,0		; ptr a cadena
+				or r21,r0,r0		; r21 = 0
+				LEA(r26,0x10000)
+
+bucCS:			ld r22,r20,0		; palabra cadena
+				or r24,r0,0			; r24 = 0
+
+bucCSb:			cmp r7,r24,3
+				bb1 eq,r7, sumaCS
+				ld.bu r23,r20,r24	; byte cadena
+				cmp r7,r23,0
+				bb1 eq,r7,nuevaPal	; ultima palabra del bucle
+				addu r24,r24,1
+				
+				br bucCSb
+
+nuevaPal:		cmp r7,r24,0
+				bb1 eq,r7,caso0
+				cmp r7,r24,1
+				bb1 eq,r7,caso1
+				cmp r7,r24,2
+				bb1 eq,r7,caso1
+				cmp r7,r24,3
+				bb1 eq,r7,caso2
+
+caso0:			ld r22,r0,0
+				br finCS
+
+caso1:			ld r22,r20,0
+				mulu r22, r22, r26
+				divu r22, r22, r26
+				br finCS
+
+caso2:			ld r22,r20,0
+				br finCS
+
+sumaCS:			addu r21,r21,r22
+				add r20,r20,4
+				br bucCS
+
+finCS:			addu r21,r21,r22
+				or r29,r21,r0
+				jmp(r1)
+				
+;---------------------------------------------------------
+; Comprime
+;---------------------------------------------------------
+
+Comprime:		PUSH(r31)
+				PUSH(r1)
+				or r31,r30,r30
+				ld r20,r31,8		; punt a texto
+				PUSH(r20)
+				bsr LongCad
+				addu r30,r30,4
+				
+				or r12,r29,0
+				divu r22,r29,4
+				mulu r22,r22,4
+				cmp r7,r22,r29
+				bb1 eq,r7,resC
+				addu r22,r22,4
+
+resC:			addu r22,r22,32		; añadimos al tamaño a reservar el n de bytes y de bits, el puntero a texto y dir(P)
+				subu r30,r30,r22	; reservo espacio en pila para texto
+				subu r22,r22,33
+				ld r20,r31,8		; puntero a texto
+				ld r21,r31,12
+				addu r21,r21,5		; puntero a mapa de bits
+				or r23,r0,1			; n de bytes
+				or r25,r0,128		; n de bits
+				or r26,r26,0
+				or r27,r0,0			; var local mapa bits
+				or r28,r0,0			; posicion en el texto
+				or r24,r0,8
+
+bucC:			cmp r7,r24,0		; inserta en pila los 8 primeros caracteres (2 palabras)
+				bb1 eq,r7,sigC
+				ld.b r26,r20,r28
+				st.b r26,r30,r22
+				addu r28,r28,1
+				subu r22,r22,1
+				subu r24,r24,1
+				br bucC
+
+sigC:			cmp r7,r28,r12
+				bb1 eq,r7,finBucC
+
+				st r28,r31,-4		; puntero a texto
+				st r21,r31,-8		; puntero a mapa de bits
+				st r22,r31,-12		; puntero pila
+				st r23,r31,-16		; cont de bytes
+				st r25,r31,-20		; cont de bits
+				st r27,r31,-24		; var local mapa bits
+				st r12,r31,-28		; longitud del texto
+				subu r26,r31,32		; direccion de pila donde almacenaremos jj (posicion)
+				PUSH(r26)
+				PUSH(r28)			; punt a texto
+				PUSH(r20)			; texto
+				bsr BuscaMax
+				addu r30,r30,12
+				ld r28,r31,-4
+				ld r21,r31,-8
+				ld r22,r31,-12
+				ld r23,r31,-16
+				ld r25,r31,-20
+				ld r27,r31,-24
+				ld r12,r31,-28		; longtud del texto
+				
+				cmp r7,r29,4
+				bb1 lt,r7,menor4C
+
+				ld r24,r31,-32
+				st.b r24,r30,r22	; Copia P en pila
+				subu r22,r22,1
+				divu r24,r24,0x100
+				st.b r24,r30,r22
+				subu r22,r22,1
+				st.b r29,r30,r22	; Copia L en pila
+				subu r22,r22,1
+
+				addu r28,r28,r29	; Avanza el puntero que recorre texto en L unidades
+				
+				addu r27,r27,r25	; Escribe un 1 en el siguiente bit del byte mapa de bits
+				
+				cmp r7,r25,1
+				bb1 eq,r7,nuevoByte
+				divu r25,r25,2
+				br sigC
+
+
+menor4C:		ld r20,r31,8
+				ld.b r24,r20,r28		; copiamos el caracter en la pila
+				st.b r24,r30,r22
+				addu r28,r28,1
+				subu r22,r22,1
+				
+				
+				; No es necesario modificar mapa de bits
+
+				cmp r7,r25,1
+				bb1 eq,r7,nuevoByte
+				divu r25,r25,2
+				br sigC
+
+nuevoByte:		st.b r27,r21,0
+				addu r21,r21,1
+				or r27,r0,0
+				or r25,r0,128
+				addu r23,r23,1
+				br sigC
+				
+finBucC:		cmp r7,r25,128		; Copia el ultimo byte del mapa de bits del texto comprimido excepto que se haya hecho esta copia				
+				bb1 eq,r7,finByte
+				st.b r27,r21,0
+				addu r21,r21,1
+				
+finByte:		ld r26,r31,12
+				st.h r12,r26,0		; Copia la longitud de texto en comprdo[0] y comprdo[1]
+				addu r26,r26,2
+				or r10,r0,1
+				
+				st.b r10,r26,0		; Copia el valor 1 (M) en comprdo[2]
+				addu r26,r26,1
+				
+				addu r23,r23,5		; Copia numero de bytes del mapa de bits + 5 encomprdo[3] y comprdo[4]
+				st.b r23,r26,0
+				addu r26,r26,1
+				divu r10,r23,0x100
+				st.b r10,r26,0
+				addu r26,r26,1
+				
+				or r26,r31,0		
+				subu r26,r26,33		; r31 = primer caracter almacenado en pila
+				or r11,r0,0			; tamaño del texto comprimido
+				or r10,r10,0
+				addu r10,r30,r22	; r31+r22=fin del texto en pila
+				
+bucFinC:		ld.b r20,r26,0
+				st.b r20,r21,0
+				addu r21,r21,1
+				subu r26,r26,1
+				addu r11,r11,1
+				cmp r7,r26,r10
+				bb1 eq,r7,finC
+				br bucFinC
+				
+finC:			or r30,r31,r31
+				or r29,r0,0
+				addu r29,r23,r11	; cabecera + mapa de bits + texto
+				POP(r1)
+				POP(r31)
+				jmp(r1)
+				
+;---------------------------------------------------------
+; Descomprime
+;---------------------------------------------------------
+
+Descomprime:	ld r20,r30,0		; dir com
+				or r21,r0,4			; despl com (empieza en ultimo byte de cabecera)
+				ld r23,r30,4		; dir desc
+				or r24,r0,0			; despl desc
+				or r25,r0,5			; mapa de bits
+				or r29,r0,8
+				
+				ld.b r22,r20,r21	; longitud cabecera
+				mulu r22,r22,0x100
+				subu r21,r21,1
+				ld.b r26,r20,r21
+				addu r22,r22,r26
+				
+				or r21,r22,0		; desplazamiento hasta texto comprimido
+				or r28,r22,0
+				or r26,r0,0
+				
+buc1Desc:		cmp r7,r26,8
+				bb1 eq,r7,sigDesc
+				ld.b r22,r20,r21
+				st.b r22,r23,r24
+				addu r21,r21,1
+				addu r24,r24,1
+				addu r26,r26,1
+				br buc1Desc
+				
+sigDesc:		subu r26,r26,1
+				ld.b r27,r20,r25
+				bb1 7,r27,bit1Desc
+				br bit0Desc
+r266:			bb1 6,r27,bit1Desc
+				br bit0Desc
+r265:			bb1 5,r27,bit1Desc
+				br bit0Desc
+r264:			bb1 4,r27,bit1Desc
+				br bit0Desc
+r263:			bb1 3,r27,bit1Desc
+				br bit0Desc
+r262:			bb1 2,r27,bit1Desc
+				br bit0Desc
+r261:			bb1 1,r27,bit1Desc
+				br bit0Desc
+r260:			bb1 0,r27,bit1Desc
+				br bit0Desc
+				
+bit0Desc:		ld.b r22,r20,r21
+				st.b r22,r23,r24
+				cmp r7,r22,r0
+				bb1 eq,r7,finDesc
+				addu r21,r21,1
+				addu r24,r24,1
+				subu r26,r26,1
+				addu r29,r29,1
+				br compr26Desc
+
+bit1Desc:		addu r21,r21,1
+				ld.b r22,r20,r21	; posicion compresion
+				mulu r22,r22,0x100
+				subu r21,r21,1
+				ld.b r27,r20,r21
+				addu r22,r22,r27
+				addu r10,r0,r22	
+				
+				addu r21,r21,2
+				ld.b r27,r20,r21	; longitud compresión
+				addu r21,r21,1		; r21 = siguiente caracter
+				subu r26,r26,1
+				
+buc3Desc:		cmp r7,r27,0
+				bb1 eq,r7,compr26Desc
+				ld.b r22,r23,r10
+				st.b r22,r23,r24
+				cmp r7,r22,r0
+				bb1 eq,r7,finDesc
+				addu r10,r10,1
+				addu r24,r24,1
+				subu r27,r27,1
+				addu r29,r29,1
+				br buc3Desc
+				
+sigByteDesc:	cmp r7,r25,r28
+				bb1 eq,r7,finDesc
+				or r26,r0,8
+				addu r25,r25,1
+				br sigDesc
+				
+compr26Desc:	ld.b r27,r20,r25
+				cmp r7,r26,6
+				bb1 eq,r7,r266
+				cmp r7,r26,5
+				bb1 eq,r7,r265
+				cmp r7,r26,4
+				bb1 eq,r7,r264
+				cmp r7,r26,3
+				bb1 eq,r7,r263
+				cmp r7,r26,2
+				bb1 eq,r7,r262
+				cmp r7,r26,1
+				bb1 eq,r7,r261
+				cmp r7,r26,0
+				bb1 eq,r7,r260
+				cmp r7,r26,-1
+				bb1 eq,r7,sigByteDesc
+				
+finDesc:		st.b r0,r23,r24
+				jmp(r1)
+
+;---------------------------------------------------------
+; Verifica
+;---------------------------------------------------------
+Verifica:		PUSH(r31)
+				PUSH(r1)
+				or r31,r30,r30
+				or r29,r29,0
+				ld r20,r31,8		; texto
+				PUSH(r20)
+				bsr LongCad
+				addu r30,r30,4
+				
+				addu r21,r29,7		; 7+LO
+				divu r21,r21,8		; (7+LO)/8
+				subu r21,r21,1		; ((7+LO)/8)-1
+				addu r21,r21,5		; 5+((7+LO)/8)-1
+				addu r21,r21,r29	; 5+((7+LO)/8)-1)+LO
+				or r22,r21,0		
+				or r3,r21,0;r3 es r21 pre ajuste
+				divu r22,r21,4
+				mulu r22,r22,4
+				addu r22,r22,4		; r22 tama˜no ajustado al siguiente multiplo de cuatro
+				subu r30,r30,r22	; marco de pila Comprime
+				
+				divu r21,r29,4
+				mulu r21,r21,4
+				addu r21,r21,4
+				subu r30,r30,r21	; marco de pila Descomprimida
+				
+				subu r30,r30,16		; variables locales
+				addu r22,r30,r22	; dir pila para Comprime
+				addu r22,r22,4
+				addu r21,r22,r21	; dir pila para Descomprime
+				
+				st r21,r31,-4
+				st r22,r31,-8
+				st r29,r31,-12
+				or r20,r0,0
+				addu r20,r30,4
+				PUSH(r20)
+				ld r20,r31,8		; texto
+				PUSH(r20)
+				bsr Comprime
+				addu r30,r30,8
+				
+				ld r21,r31,-4
+				ld r22,r31,-8
+				PUSH(r22)
+				or r20,r0,0
+				addu r20,r30,8
+				PUSH(r20)
+				bsr Descomprime
+				addu r30,r30,8
+				
+				ld r22,r31,-8
+				PUSH(r22)
+				bsr LongCad
+				addu r30,r30,4
+				ld r23,r31,-12		; LO
+				cmp r7,r23,r29
+				bb0 eq,r7,falloVer
+				
+				ld r20,r31,8
+				PUSH(r20)
+				bsr Checksum
+				addu r30,r30,4
+				ld r24,r31,12
+				st r29,r24,0
+				
+				ld r22,r31,-8
+				PUSH(r22)
+				bsr Checksum
+				addu r30,r30,4
+				ld r24,r31,16
+				st r29,r24,0
+				
+				ld r23,r31,12
+				ld r24,r23,0
+				ld r23,r31,16
+				ld r23,r23,0
+				cmp r7,r23,r24
+				bb1 eq,r7,okVer
+				br finVer
+				
+okVer:			or r29,r0,0
+				br finVer
+falloVer:		or r29,r0,0
+				subu r29,r29,1
+finVer:			or r30,r31,r31
+				POP(r1)
+				POP(r31)
+				jmp(r1)
